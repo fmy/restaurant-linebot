@@ -1,21 +1,30 @@
 'use strict';
 
 const http = require('http');
-const proxy = require('request').defaults({
-  proxy: process.env.FIXIE_URL
-});
+const Yelp = require('yelp');
+const Promise = require('bluebird');
+const request = Promise.promisifyAll(require('request').defaults({
+  proxy: process.env.FIXIE_URL,
+}));
 
 const CONST = {
   ID: process.env.LINE_BOT_ID,
   SECRET: process.env.LINE_BOT_SECRET,
-  MID: process.env.LINE_BOT_MID
+  MID: process.env.LINE_BOT_MID,
 };
+
+const yelp = new Yelp({
+  consumer_key: process.env.YELP_KEY,
+  consumer_secret: process.env.YELP_SECRET,
+  token: process.env.YELP_TOKEN,
+  token_secret: process.env.YELP_TOKEN_SECRET,
+});
 
 const checkRequest = (req) => {
   return true;
 };
 
-const botHandler = (req, res, body) => {
+const botHandler = Promise.coroutine(function* (req, res, body) {
   if (!checkRequest(req)) {
     console.log('request was not from line server.');
     res.writeHead(400);
@@ -29,39 +38,54 @@ const botHandler = (req, res, body) => {
     toChannel: 1383378250,
     eventType: "138311608800106203",
     content: {
-      toType: 1
+      toType: 1,
+      contentType: 1,
     }
   };
 
-  if (content.contentType === 1) {
-    json.content.contentType = 1;
-    json.content.text = 'your message: ' + content.text;
-  } else if (content.contentType === 7) {
-    json.content.contentType = 1;
-    json.content.text = '';
+  if (content.contentType !== 7) {
+    json.content.text = 'Please send location with [+] button.';
+  } else {
+    const data = yield yelp.search({
+      term: 'food',
+      limit: 10,
+      sort: 1,
+      radius_filter: 2000,
+      location: content.location.address,
+      cll: [content.location.latitude, content.location.longitude].join(','),
+      cc: 'JP',
+      lang: 'ja',
+    });
+    json.content.text = data.businesses.map((r) => {
+      const star = Array(parseInt(r.rating) + 1).join('★') + (parseInt(r.rating) === r.rating ? '' : '☆');
+      r.url = r.url.split('?')[0];
+      try {
+        r.url = decodeURI(r.url.split('?')[0]);
+      } catch(e) {}
+      return [
+        r.name + ' ' + star,
+        r.categories.map((c) => { return c[0]; }).join(','),
+        r.url,
+      ].join('\n');
+    }).join('\n\n');
   }
 
   const headers = {
     'Content-Type': 'application/json; charset=UTF-8',
     'X-Line-ChannelID': CONST.ID,
     'X-Line-ChannelSecret': CONST.SECRET,
-    'X-Line-Trusted-User-With-ACL': CONST.MID
+    'X-Line-Trusted-User-With-ACL': CONST.MID,
   };
-  proxy({
+  yield request.postAsync({
     url:'https://trialbot-api.line.me/v1/events',
-    method: 'POST',
     json: true,
     headers: headers,
-    body: json
-  }, (err, res, body) => {
-    if (err) {
-      console.log(err);
-    }
+    body: json,
   });
 
   res.writeHead(200, {'Content-Type': 'text/plain'});
   res.end('OK');
-};
+});
 
 
 const handler = (req, res) => {
@@ -74,7 +98,7 @@ const handler = (req, res) => {
       body += data;
     });
     req.on('end', () => {
-      botHandler(req, res, body);
+      botHandler(req, res, body).catch(console.log);
     });
   } else {
     res.writeHead(400);

@@ -13,6 +13,8 @@
   "author": "fmy",
   "license": "MIT",
   "dependencies": {
-    "request": "^2.70.0"
+    "bluebird": "^3.3.4",
+    "request": "^2.70.0",
+    "yelp": "^1.0.1"
   }
 }
