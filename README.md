@@ -21,6 +21,7 @@
   - YELP_TOKEN_SECRET
 - add 'Fixie' add-on
 - set Fixie IPs in LINE whitelist
+- set callback url in LINE BOT setting
 - deploy this app to heroku
 
 ## LICENSE
